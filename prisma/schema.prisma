@@ -1,0 +1,100 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                    String        @id @default(auto()) @map("_id") @db.ObjectId
+  name                  String
+  email                 String        @unique
+  password              String
+  role                  Role          @default(STUDENT)
+  profile_image_url     String?
+  verification_face_url String?
+  participants          Participant[]
+  meetings              Meeting[]     @relation("CreatedMeetings") // created meetings
+  reports               Report[]
+}
+
+model Meeting {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  room_name String
+  s_date    DateTime
+  e_date    DateTime
+
+  // This is the creator's ID
+  created_by String
+  // This is the actual relation to User
+  creator    User   @relation("CreatedMeetings", fields: [created_by], references: [id])
+
+  quizzes      Quiz[]
+  focusEvents  FocusEvent[]
+  participants Participant[]
+  reports      Report[]
+}
+
+model Participant {
+  id            String         @id @default(auto()) @map("_id") @db.ObjectId
+  meeting_id    String
+  user_id       String
+  role          String
+  joined_at     DateTime?
+  left_at       DateTime?
+  meeting       Meeting        @relation(fields: [meeting_id], references: [id])
+  user          User           @relation(fields: [user_id], references: [id])
+  quizResponses QuizResponse[]
+}
+
+model Quiz {
+  id             String         @id @default(auto()) @map("_id") @db.ObjectId
+  meeting_id     String
+  question       String
+  options        Json
+  correct_answer String
+  duration       Int
+  created_at     DateTime       @default(now())
+  meeting        Meeting        @relation(fields: [meeting_id], references: [id])
+  responses      QuizResponse[]
+}
+
+model QuizResponse {
+  id             String      @id @default(auto()) @map("_id") @db.ObjectId
+  quiz_id        String
+  participant_id String
+  answer         String
+  is_correct     Boolean
+  quiz           Quiz        @relation(fields: [quiz_id], references: [id])
+  participant    Participant @relation(fields: [participant_id], references: [id])
+}
+
+model FocusEvent {
+  id              String   @id @default(auto()) @map("_id") @db.ObjectId
+  meeting_id      String
+  user_id         String
+  timestamp       DateTime
+  gaze            String?
+  emotion         String?
+  attention_score Float?
+  meeting         Meeting  @relation(fields: [meeting_id], references: [id])
+}
+
+model Report {
+  id            String  @id @default(auto()) @map("_id") @db.ObjectId
+  meeting_id    String
+  user_id       String
+  quiz_score    Float?
+  num_alerts    Int?
+  avg_attention Float?
+  meeting       Meeting @relation(fields: [meeting_id], references: [id])
+  user          User    @relation(fields: [user_id], references: [id])
+}
+
+enum Role {
+  STUDENT
+  INSTRUCTOR
+  ADMIN
+}
