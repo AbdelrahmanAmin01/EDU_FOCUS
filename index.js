@@ -4,6 +4,8 @@ import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
+import nodemailer from "nodemailer";
+
 
 //---------------- Cors -----------------//
 import cors from "cors";
@@ -62,65 +64,187 @@ const authenticateToken = (req, res, next) => {
 };
 
 
+// Create your transporter (configure with your email service)
+const transporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  },
+});
 
-// REGISTER
-app.post("/register", upload.single("profile_image"), async (req, res) => {
+// Function to generate a 6-digit verification code
+function generateVerificationCode() {
+  return Math.floor(100000 + Math.random() * 900000);
+}
+
+
+
+// ----------------------------------------
+app.post("/upload-image", upload.single("image"), (req, res) => {
   try {
-    const { name, email, password, role } = req.body;
-    const profile_image_url = req.file ? `/uploads/${req.file.filename}` : null;
-
-    // التحقق من وجود الإيميل مسبقاً
-    const existingUser = await prisma.user.findUnique({
-      where: { email }
-    });
-
-    if (existingUser) {
-      return res.status(400).json({ 
-        success: false,
-        error: "Email already exists",
-        message: "An account with this email already exists"
-      });
+    if (!req.file) {
+      return res.status(400).json({ error: "No file uploaded" });
     }
 
-    // التحقق من صحة البيانات المطلوبة
-    if (!name || !email || !password) {
-      return res.status(400).json({
-        success: false,
-        error: "Missing required fields",
-        message: "Name, email, and password are required"
-      });
-    }
+    const imageUrl = `/uploads/${req.file.filename}`; // رابط الصورة
 
-    // تشفير كلمة المرور
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    const user = await prisma.user.create({
-      data: {
-        name,
-        email,
-        password: hashedPassword,
-        role: role || "STUDENT", // default to STUDENT
-        profile_image_url,
-      },
+    res.status(201).json({
+      message: "Image uploaded successfully",
+      imageUrl, // هنا هترجع رابط الصورة
     });
-
-    // إزالة كلمة المرور من الاستجابة
-    const { password: _, ...userWithoutPassword } = user;
-    res.json({
-      success: true,
-      message: "User registered successfully",
-      user: userWithoutPassword
-    });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ 
-      success: false,
-      error: "Registration failed",
-      details: err.message 
-    });
+  } catch (error) {
+    console.error("Error uploading image:", error);
+    res.status(500).json({ error: "Internal server error", details: error.message });
   }
 });
 
+
+// -----------------------------------------
+
+app.post("/registers", async (req, res) => {
+  try {
+    const { name, email, password } = req.body;
+
+    console.log("✅ Received registration request");
+
+    // Validate required fields
+    if (!name?.trim() || !email?.trim() || !password?.trim()) {
+      console.log("❌ Validation failed");
+      return res
+        .status(400)
+        .json({ error: "Name, email, and password are required" });
+    }
+
+    // Check if user already exists
+    const existingUser = await prisma.user.findUnique({ where: { email } });
+    if (existingUser) {
+      console.log("❌ Email already in use");
+      return res.status(400).json({ error: "Email already in use" });
+    }
+
+    // Generate verification code
+    const verificationCode = generateVerificationCode();
+
+    // Create user
+    const newUser = await prisma.user.create({
+      data: {
+        name: name.trim(),
+        email: email.trim(),
+        password, // Consider hashing before saving
+      },
+    });
+
+    console.log("📧 Sending verification email...");
+
+    // Send email
+    await transporter.sendMail({
+      from: `"Edu Focus" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: "🎓 Welcome to Edu Focus! Verify Your Email",
+      text: `Hi ${name},
+
+Thank you for joining Edu Focus!! 🎓
+
+To complete your registration and verify your email, use the following verification code:
+
+🔑 Verification Code: ${verificationCode}
+
+If you didn’t sign up, please ignore this email.
+
+The Edu Focus Team
+🚀 Your learning journey starts here!`,
+    });
+
+    console.log("✅ User registered successfully!");
+    res.status(201).json({
+      message: "Registration successful. A verification email has been sent.",
+      otp: verificationCode, // هنا بنرجع الـ OTP
+      user: {
+        id: newUser.id,
+        name: newUser.name,
+        email: newUser.email,
+        role: newUser.role,
+        // profile_image_url: newUser.profile_image_url,
+      },
+    });
+  } catch (error) {
+    console.error("❌ ERROR in /registers:", error);
+    res.status(500).json({ error: "Internal server error", details: error.message });
+  }
+});
+
+// app.post("/register", upload.single("profile_image"), async (req, res) => {
+//   try {
+//     const { name, email, password, role } = req.body;
+//     const profile_image_url = req.file ? `/uploads/${req.file.filename}` : null;
+
+//     // Check if email already exists
+//     const existingUser = await prisma.user.findUnique({ where: { email } });
+//     if (existingUser) {
+//       return res.status(400).json({
+//         success: false,
+//         error: "Email already exists",
+//         message: "An account with this email already exists",
+//       });
+//     }
+
+//     // Validate input
+//     if (!name || !email || !password) {
+//       return res.status(400).json({
+//         success: false,
+//         error: "Missing required fields",
+//         message: "Name, email, and password are required",
+//       });
+//     }
+
+//     // Hash password
+//     const hashedPassword = await bcrypt.hash(password, 10);
+
+//     // Create new user
+//     const user = await prisma.user.create({
+//       data: {
+//         name,
+//         email,
+//         password: hashedPassword,
+//         role: role || "STUDENT",
+//         profile_image_url,
+//       },
+//     });
+
+//     // Send welcome email
+//     await transporter.sendMail({
+//       from: `"Edu Focus" <${process.env.EMAIL_USER}>`,
+//       to: email,
+//       subject: "🎓 Welcome to Edu Focus!",
+//       html: `
+//         <div style="font-family: Arial, sans-serif; color: #333;">
+//           <h2>Welcome, ${name}!</h2>
+//           <p>Your account has been successfully created on <b>Edu Focus</b>.</p>
+//           <p><b>Role:</b> ${role || "STUDENT"}</p>
+//           <p>We're happy to have you onboard! 🎉</p>
+//           <hr />
+//           <small>If you didn't register, please ignore this email.</small>
+//         </div>
+//       `,
+//     });
+
+//     // Respond without password
+//     const { password: _, ...userWithoutPassword } = user;
+//     res.json({
+//       success: true,
+//       message: "User registered successfully and email sent",
+//       user: userWithoutPassword,
+//     });
+//   } catch (err) {
+//     console.error("Error during registration:", err);
+//     res.status(500).json({
+//       success: false,
+//       error: "Registration failed",
+//       details: err.message,
+//     });
+//   }
+// });
 // LOGIN
 app.post("/login", async (req, res) => {
   try {
