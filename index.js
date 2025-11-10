@@ -464,19 +464,27 @@ app.post("/meetings", authenticateToken, async (req, res) => {
   try {
     const { base_room_name, s_date, e_date } = req.body;
 
-    if (!base_room_name || !s_date || !e_date) {
+    if (!base_room_name || !s_date) {
       return res
         .status(400)
-        .json({ error: "room_name, s_date, e_date are required" });
+        .json({ error: "base_room_name and s_date are required" });
     }
+
     const room_name = generateRoomName(base_room_name);
+
+    const meetingData: any = {
+      room_name,
+      s_date: new Date(s_date),
+      created_by: req.user.id, // استخدام المستخدم الحالي
+    };
+
+    // إضافة e_date فقط لو موجود
+    if (e_date) {
+      meetingData.e_date = new Date(e_date);
+    }
+
     const meeting = await prisma.meeting.create({
-      data: {
-        room_name,
-        s_date: new Date(s_date),
-        e_date: new Date(e_date),
-        created_by: req.user.id, // استخدام المستخدم الحالي
-      },
+      data: meetingData,
       include: {
         creator: { select: { id: true, name: true, email: true } },
       },
@@ -488,6 +496,33 @@ app.post("/meetings", authenticateToken, async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+app.patch("/meetings/:id/end-date", authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { e_date } = req.body;
+
+    if (!e_date) {
+      return res.status(400).json({ error: "e_date is required" });
+    }
+
+    const updatedMeeting = await prisma.meeting.update({
+      where: { id },
+      data: { e_date: new Date(e_date) },
+      include: {
+        creator: { select: { id: true, name: true, email: true } },
+      },
+    });
+
+    res.status(200).json({
+      message: "End date updated successfully",
+      meeting: updatedMeeting,
+    });
+  } catch (error) {
+    console.error("Error updating e_date:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Update Meeting
 app.put("/meetings/:id", authenticateToken, async (req, res) => {
   try {
