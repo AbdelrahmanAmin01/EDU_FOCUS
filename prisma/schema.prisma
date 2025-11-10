@@ -24,7 +24,7 @@ model Meeting {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
   room_name String
   s_date    DateTime
-  e_date    DateTime
+  e_date    DateTime?
 
   // This is the creator's ID
   created_by String
