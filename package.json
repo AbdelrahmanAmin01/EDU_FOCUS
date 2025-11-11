@@ -4,15 +4,12 @@
   "main": "index.js",
   "type": "module",
   "engines": {
-    "node": ">=22.0.0"
+    "node": ">=24.0.0",
+    "npm": ">=11.0.0"
   },
-  "engines": {
-  "node": ">=24.0.0",
-  "npm": ">=11.0.0"
-},
-
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "build": "echo 'No build needed'"
   },
   "dependencies": {
     "@prisma/client": "^6.15.0",
