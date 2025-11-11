@@ -18,6 +18,8 @@ model User {
   participants          Participant[]
   meetings              Meeting[]     @relation("CreatedMeetings") // created meetings
   reports               Report[]
+  verificationCode  String?
+  isVerified        Boolean  @default(false)
 }
 
 model Meeting {

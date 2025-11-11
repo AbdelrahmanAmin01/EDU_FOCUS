@@ -125,13 +125,15 @@ app.post("/registers", async (req, res) => {
 
     // Generate verification code
     const verificationCode = generateVerificationCode();
-
+    const hashedPassword = await bcrypt.hash(password, 10);
     // Create user
     const newUser = await prisma.user.create({
       data: {
         name: name.trim(),
         email: email.trim(),
-        password, // Consider hashing before saving
+        password:hashedPassword, // Consider hashing before saving
+        verificationCode: String(verificationCode),
+        isVerified: false,
       },
     });
 
@@ -144,16 +146,16 @@ app.post("/registers", async (req, res) => {
       subject: "🎓 Welcome to Edu Focus! Verify Your Email",
       text: `Hi ${name},
 
-Thank you for joining Edu Focus!! 🎓
+        Thank you for joining Edu Focus!! 🎓
 
-To complete your registration and verify your email, use the following verification code:
+        To complete your registration and verify your email, use the following verification code:
 
-🔑 Verification Code: ${verificationCode}
+        🔑 Verification Code: ${verificationCode}
 
-If you didn’t sign up, please ignore this email.
+        If you didn’t sign up, please ignore this email.
 
-The Edu Focus Team
-🚀 Your learning journey starts here!`,
+        The Edu Focus Team
+        🚀 Your learning journey starts here!`,
     });
 
     console.log("✅ User registered successfully!");
@@ -174,83 +176,33 @@ The Edu Focus Team
   }
 });
 
-// app.post("/register", upload.single("profile_image"), async (req, res) => {
-//   try {
-//     const { name, email, password, role } = req.body;
-//     const profile_image_url = req.file ? `/uploads/${req.file.filename}` : null;
+app.post("/verify-otp", async (req, res) => {
+  const { email, otp } = req.body;
+  try {
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user) return res.status(404).json({ error: "User not found" });
 
-//     // Check if email already exists
-//     const existingUser = await prisma.user.findUnique({ where: { email } });
-//     if (existingUser) {
-//       return res.status(400).json({
-//         success: false,
-//         error: "Email already exists",
-//         message: "An account with this email already exists",
-//       });
-//     }
+    if (user.verificationCode !== otp)
+      return res.status(400).json({ error: "Invalid OTP" });
 
-//     // Validate input
-//     if (!name || !email || !password) {
-//       return res.status(400).json({
-//         success: false,
-//         error: "Missing required fields",
-//         message: "Name, email, and password are required",
-//       });
-//     }
+    await prisma.user.update({
+      where: { email },
+      data: { isVerified: true, verificationCode: null },
+    });
 
-//     // Hash password
-//     const hashedPassword = await bcrypt.hash(password, 10);
+    res.json({ message: "Email verified successfully!" });
+  } catch (error) {
+    console.error("❌ ERROR in /verify-otp:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
 
-//     // Create new user
-//     const user = await prisma.user.create({
-//       data: {
-//         name,
-//         email,
-//         password: hashedPassword,
-//         role: role || "STUDENT",
-//         profile_image_url,
-//       },
-//     });
 
-//     // Send welcome email
-//     await transporter.sendMail({
-//       from: `"Edu Focus" <${process.env.EMAIL_USER}>`,
-//       to: email,
-//       subject: "🎓 Welcome to Edu Focus!",
-//       html: `
-//         <div style="font-family: Arial, sans-serif; color: #333;">
-//           <h2>Welcome, ${name}!</h2>
-//           <p>Your account has been successfully created on <b>Edu Focus</b>.</p>
-//           <p><b>Role:</b> ${role || "STUDENT"}</p>
-//           <p>We're happy to have you onboard! 🎉</p>
-//           <hr />
-//           <small>If you didn't register, please ignore this email.</small>
-//         </div>
-//       `,
-//     });
-
-//     // Respond without password
-//     const { password: _, ...userWithoutPassword } = user;
-//     res.json({
-//       success: true,
-//       message: "User registered successfully and email sent",
-//       user: userWithoutPassword,
-//     });
-//   } catch (err) {
-//     console.error("Error during registration:", err);
-//     res.status(500).json({
-//       success: false,
-//       error: "Registration failed",
-//       details: err.message,
-//     });
-//   }
-// });
-// LOGIN
 app.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Check if the user exists
+    // البحث عن المستخدم بالإيميل
     const user = await prisma.user.findUnique({
       where: { email },
     });
@@ -259,24 +211,32 @@ app.post("/login", async (req, res) => {
       return res.status(404).json({ success: false, message: "User not found" });
     }
 
-    // مقارنة كلمة المرور باستخدام bcrypt
+    // ✅ تحقق إذا الحساب مفعل
+    if (!user.isVerified) {
+      return res.status(403).json({
+        success: false,
+        message: "Account not verified. Please check your email for the verification code.",
+      });
+    }
+
+    // ✅ مقارنة كلمة المرور باستخدام bcrypt
     const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid) {
       return res.status(401).json({ success: false, message: "Invalid password" });
     }
 
-    // إنشاء JWT token
+    // ✅ إنشاء JWT token
     const token = jwt.sign(
-      { 
-        id: user.id, 
-        email: user.email, 
-        role: user.role 
+      {
+        id: user.id,
+        email: user.email,
+        role: user.role,
       },
       JWT_SECRET,
-      { expiresIn: '24h' }
+      { expiresIn: "24h" }
     );
 
-    // Success response
+    // ✅ استجابة النجاح
     return res.status(200).json({
       success: true,
       message: "Login successful",
@@ -298,6 +258,7 @@ app.post("/login", async (req, res) => {
     });
   }
 });
+
 
 // مسار للتحقق من التوكن
 app.get("/verify-token", authenticateToken, (req, res) => {
@@ -364,7 +325,7 @@ app.put("/users/:id", authenticateToken, upload.single("profile_image"), async (
         where: { email }
       });
       if (emailExists) {
-        return res.status(400).json({ 
+        return res.status(400).json({
           error: "Email already exists",
           message: "An account with this email already exists"
         });
@@ -454,6 +415,9 @@ app.get("/users", authenticateToken, async (req, res) => {
   }
 });
 
+
+
+
 function generateRoomName(baseName) {
   const randomPart = Math.random().toString(36).substring(2, 8); // رقم 4 أرقام
   return `${baseName}-${randomPart}`;
@@ -472,7 +436,7 @@ app.post("/meetings", authenticateToken, async (req, res) => {
 
     const room_name = generateRoomName(base_room_name);
 
-    const meetingData: any = {
+    const meetingData = {
       room_name,
       s_date: new Date(s_date),
       created_by: req.user.id, // استخدام المستخدم الحالي
@@ -643,7 +607,7 @@ app.put("/participants/:id", authenticateToken, async (req, res) => {
     const { id } = req.params;
     const { role, joined_at, left_at } = req.body;
 
-    const existingParticipant = await prisma.participant.findUnique({ 
+    const existingParticipant = await prisma.participant.findUnique({
       where: { id },
       include: { meeting: true }
     });
@@ -652,9 +616,9 @@ app.put("/participants/:id", authenticateToken, async (req, res) => {
     }
 
     // التحقق من أن المستخدم هو منشئ الاجتماع أو مدير أو المشارك نفسه
-    if (existingParticipant.meeting.created_by !== req.user.id && 
-        req.user.role !== 'ADMIN' && 
-        existingParticipant.user_id !== req.user.id) {
+    if (existingParticipant.meeting.created_by !== req.user.id &&
+      req.user.role !== 'ADMIN' &&
+      existingParticipant.user_id !== req.user.id) {
       return res.status(403).json({ error: "Unauthorized to update this participant" });
     }
 
@@ -683,7 +647,7 @@ app.delete("/participants/:id", authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
 
-    const existingParticipant = await prisma.participant.findUnique({ 
+    const existingParticipant = await prisma.participant.findUnique({
       where: { id },
       include: { meeting: true }
     });
@@ -692,9 +656,9 @@ app.delete("/participants/:id", authenticateToken, async (req, res) => {
     }
 
     // التحقق من أن المستخدم هو منشئ الاجتماع أو مدير أو المشارك نفسه
-    if (existingParticipant.meeting.created_by !== req.user.id && 
-        req.user.role !== 'ADMIN' && 
-        existingParticipant.user_id !== req.user.id) {
+    if (existingParticipant.meeting.created_by !== req.user.id &&
+      req.user.role !== 'ADMIN' &&
+      existingParticipant.user_id !== req.user.id) {
       return res.status(403).json({ error: "Unauthorized to delete this participant" });
     }
 
