@@ -75,12 +75,12 @@ const transporter = nodemailer.createTransport({
 
 // Function to generate a 6-digit verification code
 function generateVerificationCode() {
-  return Math.floor(100000 + Math.random() * 900000);
+  return Math.floor(1000 + Math.random() * 9000);
 }
 
 
 
-// ----------------------------------------
+// Image Upload Endpoint
 app.post("/upload-image", upload.single("image"), (req, res) => {
   try {
     if (!req.file) {
@@ -90,6 +90,7 @@ app.post("/upload-image", upload.single("image"), (req, res) => {
     const imageUrl = `/uploads/${req.file.filename}`; // رابط الصورة
 
     res.status(201).json({
+      success: true,
       message: "Image uploaded successfully",
       imageUrl, // هنا هترجع رابط الصورة
     });
@@ -100,8 +101,7 @@ app.post("/upload-image", upload.single("image"), (req, res) => {
 });
 
 
-// -----------------------------------------
-
+// Register User
 app.post("/registers", async (req, res) => {
   try {
     const { name, email, password } = req.body;
@@ -160,6 +160,7 @@ app.post("/registers", async (req, res) => {
 
     console.log("✅ User registered successfully!");
     res.status(201).json({
+      success: true,
       message: "Registration successful. A verification email has been sent.",
       otp: verificationCode, // هنا بنرجع الـ OTP
       user: {
@@ -190,7 +191,7 @@ app.post("/verify-otp", async (req, res) => {
       data: { isVerified: true, verificationCode: null },
     });
 
-    res.json({ message: "Email verified successfully!" });
+    res.json({  success: true, message: "Email verified successfully!" });
   } catch (error) {
     console.error("❌ ERROR in /verify-otp:", error);
     res.status(500).json({ error: "Internal server error" });
